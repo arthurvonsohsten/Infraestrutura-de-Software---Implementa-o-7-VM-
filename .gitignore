@@ -1,0 +1,11 @@
+# binários gerados pelo make
+vm
+*.o
+
+# saída gerada pela execução
+correct.txt
+
+# arquivos fornecidos pelo professor (não devem ser enviados)
+addresses.txt
+address.txt
+BACKING_STORE.bin
