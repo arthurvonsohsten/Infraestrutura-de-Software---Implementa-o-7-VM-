@@ -1,15 +1,11 @@
-CC      = gcc
-CFLAGS  = -Wall -Wextra -std=c11 -O2 -pthread
-LDFLAGS = -pthread
-TARGET  = vm
-SRC     = vm.c
+# Compila com "make" e limpa com "make clean"
+CC = gcc
+CFLAGS = -Wall -Wextra -pthread
 
-.PHONY: all clean
+all: vm
 
-all: $(TARGET)
-
-$(TARGET): $(SRC)
-	$(CC) $(CFLAGS) -o $(TARGET) $(SRC) $(LDFLAGS)
+vm: vm.c
+	$(CC) $(CFLAGS) -o vm vm.c
 
 clean:
-	rm -f $(TARGET) *.o correct.txt
+	rm -f vm correct.txt
