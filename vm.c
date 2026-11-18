@@ -17,11 +17,16 @@
 #define NUM_PAGINAS   256   /* páginas no espaço lógico (2^8)       */
 #define TAM_TLB       16    /* entradas da TLB                      */
 #ifndef NUM_FRAMES
-#define NUM_FRAMES    128   /* frames da memória física             */
+#define NUM_FRAMES    256   /* frames da memória física             */
 #endif
 
 #define ARQ_DISCO     "BACKING_STORE.bin"
 #define ARQ_SAIDA     "correct.txt"
+
+/* Memória física e tabela de páginas */
+signed char memoria[NUM_FRAMES][TAM_PAGINA];
+int tabela_paginas[NUM_PAGINAS];   /* página -> frame (-1 = fora da memória) */
+int frames_usados = 0;
 
 int alg_pagina_lru, alg_tlb_lru;   /* 1 = lru, 0 = fifo */
 
@@ -84,6 +89,21 @@ int validar_arquivo(FILE *arq, const char *nome) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Memória                                                             */
+/* ------------------------------------------------------------------ */
+
+/* Trata o page fault: carrega a página do disco num frame e devolve o frame. */
+int carregar_pagina(FILE *disco, int pagina) {
+    int frame = frames_usados++;            /* preenche os frames a partir do 0 */
+
+    fseek(disco, pagina * TAM_PAGINA, SEEK_SET);
+    fread(memoria[frame], 1, TAM_PAGINA, disco);
+
+    tabela_paginas[pagina] = frame;
+    return frame;
+}
+
+/* ------------------------------------------------------------------ */
 
 int main(int argc, char *argv[]) {
     /* (1) número e tipo dos argumentos */
@@ -119,8 +139,40 @@ int main(int argc, char *argv[]) {
         fclose(entrada);
         return 1;
     }
+    FILE *saida = fopen(ARQ_SAIDA, "w");
+    if (saida == NULL) {
+        fprintf(stderr, "Erro: não foi possível criar '%s'.\n", ARQ_SAIDA);
+        fclose(entrada);
+        fclose(disco);
+        return 1;
+    }
+
+    for (int p = 0; p < NUM_PAGINAS; p++)
+        tabela_paginas[p] = -1;
+
+    int endereco, page_faults = 0;
+
+    while (fscanf(entrada, "%d", &endereco) == 1) {
+        int pagina = endereco >> 8;        /* 8 bits mais altos  */
+        int offset = endereco & 0xFF;      /* 8 bits mais baixos */
+
+        int frame = tabela_paginas[pagina];
+        if (frame == -1) {                 /* page fault */
+            page_faults++;
+            frame = carregar_pagina(disco, pagina);
+        }
+
+        int fisico = frame * TAM_PAGINA + offset;
+        fprintf(saida, "Virtual address: %d Physical address: %d Value: %d\n",
+                endereco, fisico, memoria[frame][offset]);
+    }
+
+    fprintf(saida, "Number of Translated Addresses = %d\n", total);
+    fprintf(saida, "Page Faults = %d\n", page_faults);
+    fprintf(saida, "Page Fault Rate = %.3f", (double)page_faults / total);
 
     fclose(entrada);
     fclose(disco);
+    fclose(saida);
     return 0;
 }
