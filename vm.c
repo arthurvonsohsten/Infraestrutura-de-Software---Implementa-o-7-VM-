@@ -17,7 +17,7 @@
 #define NUM_PAGINAS   256   /* páginas no espaço lógico (2^8)       */
 #define TAM_TLB       16    /* entradas da TLB                      */
 #ifndef NUM_FRAMES
-#define NUM_FRAMES    256   /* frames da memória física             */
+#define NUM_FRAMES    128   /* frames da memória física             */
 #endif
 
 #define ARQ_DISCO     "BACKING_STORE.bin"
@@ -26,7 +26,11 @@
 /* Memória física e tabela de páginas */
 signed char memoria[NUM_FRAMES][TAM_PAGINA];
 int tabela_paginas[NUM_PAGINAS];   /* página -> frame (-1 = fora da memória) */
+int pagina_do_frame[NUM_FRAMES];   /* frame -> página que está nele          */
+int tempo_frame[NUM_FRAMES];       /* hora em que a página foi carregada      */
 int frames_usados = 0;
+
+int relogio = 0;   /* contador que avança a cada endereço traduzido */
 
 int alg_pagina_lru, alg_tlb_lru;   /* 1 = lru, 0 = fifo */
 
@@ -92,14 +96,31 @@ int validar_arquivo(FILE *arq, const char *nome) {
 /* Memória                                                             */
 /* ------------------------------------------------------------------ */
 
+/* Escolhe o frame de menor tempo (FIFO: o carregado há mais tempo). */
+int escolher_vitima(void) {
+    int vitima = 0;
+    for (int f = 1; f < NUM_FRAMES; f++)
+        if (tempo_frame[f] < tempo_frame[vitima])
+            vitima = f;
+    return vitima;
+}
+
 /* Trata o page fault: carrega a página do disco num frame e devolve o frame. */
 int carregar_pagina(FILE *disco, int pagina) {
-    int frame = frames_usados++;            /* preenche os frames a partir do 0 */
+    int frame;
+    if (frames_usados < NUM_FRAMES) {
+        frame = frames_usados++;            /* preenche do 0 ao 127 */
+    } else {
+        frame = escolher_vitima();          /* memória cheia: substitui */
+        tabela_paginas[pagina_do_frame[frame]] = -1;
+    }
 
     fseek(disco, pagina * TAM_PAGINA, SEEK_SET);
     fread(memoria[frame], 1, TAM_PAGINA, disco);
 
     tabela_paginas[pagina] = frame;
+    pagina_do_frame[frame] = pagina;
+    tempo_frame[frame] = relogio;
     return frame;
 }
 
@@ -153,6 +174,7 @@ int main(int argc, char *argv[]) {
     int endereco, page_faults = 0;
 
     while (fscanf(entrada, "%d", &endereco) == 1) {
+        relogio++;
         int pagina = endereco >> 8;        /* 8 bits mais altos  */
         int offset = endereco & 0xFF;      /* 8 bits mais baixos */
 
