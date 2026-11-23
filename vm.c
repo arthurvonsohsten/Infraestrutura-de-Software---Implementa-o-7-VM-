@@ -8,6 +8,7 @@
  *        argv[3] -> algoritmo de substituição da TLB
  */
 
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -104,12 +105,36 @@ int validar_arquivo(FILE *arq, const char *nome) {
 /* TLB                                                                 */
 /* ------------------------------------------------------------------ */
 
+/* Busca na TLB com uma thread para cada entrada. */
+typedef struct {
+    int indice;
+    int pagina;
+} ArgBusca;
+
+int indice_achado;   /* escrito pela thread que encontrar a página */
+
+void *buscar_entrada(void *arg) {
+    ArgBusca *a = arg;
+    if (tlb[a->indice].pagina == a->pagina)
+        indice_achado = a->indice;   /* só uma entrada pode ter a página */
+    return NULL;
+}
+
 /* Retorna o índice da página na TLB ou -1 (TLB miss). */
 int buscar_tlb(int pagina) {
+    pthread_t threads[TAM_TLB];
+    ArgBusca args[TAM_TLB];
+
+    indice_achado = -1;
+    for (int i = 0; i < TAM_TLB; i++) {
+        args[i].indice = i;
+        args[i].pagina = pagina;
+        pthread_create(&threads[i], NULL, buscar_entrada, &args[i]);
+    }
     for (int i = 0; i < TAM_TLB; i++)
-        if (tlb[i].pagina == pagina)
-            return i;
-    return -1;
+        pthread_join(threads[i], NULL);
+
+    return indice_achado;
 }
 
 /* Insere a página na TLB: usa uma entrada vazia ou substitui a de menor
