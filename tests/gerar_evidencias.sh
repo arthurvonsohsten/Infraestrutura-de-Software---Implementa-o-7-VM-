@@ -20,6 +20,11 @@ echo
 echo "===== Tratamento de erros ====="
 bash tests/run_errors.sh
 
+echo "===== Caso limite: endereços 0, 255, 256 e 65535 ====="
+./vm tests/limites.txt lru fifo
+cat correct.txt; echo
+echo
+
 echo "===== Tabela de páginas com 256 frames (compilado com -DNUM_FRAMES=256) ====="
 gcc -Wall -Wextra -pthread -DNUM_FRAMES=256 -o vm256 vm.c
 ./vm256 addresses.txt lru fifo
