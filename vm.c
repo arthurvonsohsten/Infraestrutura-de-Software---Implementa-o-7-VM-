@@ -30,8 +30,16 @@ int pagina_do_frame[NUM_FRAMES];   /* frame -> página que está nele          *
 int tempo_frame[NUM_FRAMES];       /* FIFO: hora da carga | LRU: último uso   */
 int frames_usados = 0;
 
-int relogio = 0;   /* contador que avança a cada endereço traduzido */
+/* TLB */
+typedef struct {
+    int pagina;   /* -1 = entrada vazia */
+    int frame;
+    int tempo;    /* FIFO: hora da inserção | LRU: último uso */
+} EntradaTLB;
 
+EntradaTLB tlb[TAM_TLB];
+
+int relogio = 0;   /* contador que avança a cada endereço traduzido */
 int alg_pagina_lru, alg_tlb_lru;   /* 1 = lru, 0 = fifo */
 
 /* ------------------------------------------------------------------ */
@@ -93,6 +101,39 @@ int validar_arquivo(FILE *arq, const char *nome) {
 }
 
 /* ------------------------------------------------------------------ */
+/* TLB                                                                 */
+/* ------------------------------------------------------------------ */
+
+/* Retorna o índice da página na TLB ou -1 (TLB miss). */
+int buscar_tlb(int pagina) {
+    for (int i = 0; i < TAM_TLB; i++)
+        if (tlb[i].pagina == pagina)
+            return i;
+    return -1;
+}
+
+/* Insere a página na TLB: usa uma entrada vazia ou substitui a de menor
+ * tempo (a mais antiga no FIFO, a menos usada recentemente no LRU). */
+int inserir_tlb(int pagina, int frame) {
+    int escolhida = 0;
+    for (int i = 0; i < TAM_TLB; i++) {
+        if (tlb[i].pagina == -1) { escolhida = i; break; }
+        if (tlb[i].tempo < tlb[escolhida].tempo) escolhida = i;
+    }
+    tlb[escolhida].pagina = pagina;
+    tlb[escolhida].frame = frame;
+    tlb[escolhida].tempo = relogio;
+    return escolhida;
+}
+
+/* Remove da TLB a página que saiu da memória. */
+void remover_tlb(int pagina) {
+    for (int i = 0; i < TAM_TLB; i++)
+        if (tlb[i].pagina == pagina)
+            tlb[i].pagina = -1;
+}
+
+/* ------------------------------------------------------------------ */
 /* Memória                                                             */
 /* ------------------------------------------------------------------ */
 
@@ -113,7 +154,9 @@ int carregar_pagina(FILE *disco, int pagina) {
         frame = frames_usados++;            /* preenche do 0 ao 127 */
     } else {
         frame = escolher_vitima();          /* memória cheia: substitui */
-        tabela_paginas[pagina_do_frame[frame]] = -1;
+        int antiga = pagina_do_frame[frame];
+        tabela_paginas[antiga] = -1;
+        remover_tlb(antiga);
     }
 
     fseek(disco, pagina * TAM_PAGINA, SEEK_SET);
@@ -171,31 +214,45 @@ int main(int argc, char *argv[]) {
 
     for (int p = 0; p < NUM_PAGINAS; p++)
         tabela_paginas[p] = -1;
+    for (int i = 0; i < TAM_TLB; i++)
+        tlb[i].pagina = -1;
 
-    int endereco, page_faults = 0;
+    int endereco, page_faults = 0, tlb_hits = 0;
 
     while (fscanf(entrada, "%d", &endereco) == 1) {
         relogio++;
         int pagina = endereco >> 8;        /* 8 bits mais altos  */
         int offset = endereco & 0xFF;      /* 8 bits mais baixos */
+        int frame;
 
-        int frame = tabela_paginas[pagina];
-        if (frame == -1) {                 /* page fault */
-            page_faults++;
-            frame = carregar_pagina(disco, pagina);
+        int indice = buscar_tlb(pagina);
+        if (indice != -1) {                /* TLB hit */
+            tlb_hits++;
+            frame = tlb[indice].frame;
+            if (alg_tlb_lru)
+                tlb[indice].tempo = relogio;
+        } else {                           /* TLB miss: consulta a tabela */
+            frame = tabela_paginas[pagina];
+            if (frame == -1) {             /* page fault */
+                page_faults++;
+                frame = carregar_pagina(disco, pagina);
+            }
+            indice = inserir_tlb(pagina, frame);
         }
 
         if (alg_pagina_lru)                /* LRU: marca o último uso */
             tempo_frame[frame] = relogio;
 
         int fisico = frame * TAM_PAGINA + offset;
-        fprintf(saida, "Virtual address: %d Physical address: %d Value: %d\n",
-                endereco, fisico, memoria[frame][offset]);
+        fprintf(saida, "Virtual address: %d TLB: %d Physical address: %d Value: %d\n",
+                endereco, indice, fisico, memoria[frame][offset]);
     }
 
     fprintf(saida, "Number of Translated Addresses = %d\n", total);
     fprintf(saida, "Page Faults = %d\n", page_faults);
-    fprintf(saida, "Page Fault Rate = %.3f", (double)page_faults / total);
+    fprintf(saida, "Page Fault Rate = %.3f\n", (double)page_faults / total);
+    fprintf(saida, "TLB Hits = %d\n", tlb_hits);
+    fprintf(saida, "TLB Hit Rate = %.3f", (double)tlb_hits / total);
 
     fclose(entrada);
     fclose(disco);
