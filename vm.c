@@ -27,7 +27,7 @@
 signed char memoria[NUM_FRAMES][TAM_PAGINA];
 int tabela_paginas[NUM_PAGINAS];   /* página -> frame (-1 = fora da memória) */
 int pagina_do_frame[NUM_FRAMES];   /* frame -> página que está nele          */
-int tempo_frame[NUM_FRAMES];       /* hora em que a página foi carregada      */
+int tempo_frame[NUM_FRAMES];       /* FIFO: hora da carga | LRU: último uso   */
 int frames_usados = 0;
 
 int relogio = 0;   /* contador que avança a cada endereço traduzido */
@@ -96,7 +96,8 @@ int validar_arquivo(FILE *arq, const char *nome) {
 /* Memória                                                             */
 /* ------------------------------------------------------------------ */
 
-/* Escolhe o frame de menor tempo (FIFO: o carregado há mais tempo). */
+/* Escolhe o frame de menor tempo (FIFO: o carregado há mais tempo;
+ * LRU: o usado há mais tempo). */
 int escolher_vitima(void) {
     int vitima = 0;
     for (int f = 1; f < NUM_FRAMES; f++)
@@ -183,6 +184,9 @@ int main(int argc, char *argv[]) {
             page_faults++;
             frame = carregar_pagina(disco, pagina);
         }
+
+        if (alg_pagina_lru)                /* LRU: marca o último uso */
+            tempo_frame[frame] = relogio;
 
         int fisico = frame * TAM_PAGINA + offset;
         fprintf(saida, "Virtual address: %d Physical address: %d Value: %d\n",
