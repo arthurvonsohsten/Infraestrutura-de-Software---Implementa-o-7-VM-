@@ -1,0 +1,130 @@
+===== Ambiente =====
+Tue Nov 17 16:50:40 -03 2026
+Linux 6.18.58.1-microsoft-standard-WSL2
+gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0
+
+===== Compilação =====
+rm -f vm correct.txt
+gcc -Wall -Wextra -pthread -o vm vm.c
+
+===== Tratamento de erros =====
+### (1) Número e tipo dos argumentos
+$ ./vm 
+Erro: são necessários 3 argumentos.
+Uso: ./vm <arquivo_enderecos> <fifo|lru> <fifo|lru>
+Exemplo: ./vm address.txt lru fifo
+-> código de saída: 1
+
+$ ./vm addresses.txt lru
+Erro: são necessários 3 argumentos.
+Uso: ./vm <arquivo_enderecos> <fifo|lru> <fifo|lru>
+Exemplo: ./vm address.txt lru fifo
+-> código de saída: 1
+
+$ ./vm addresses.txt lru fifo extra
+Erro: são necessários 3 argumentos.
+Uso: ./vm <arquivo_enderecos> <fifo|lru> <fifo|lru>
+Exemplo: ./vm address.txt lru fifo
+-> código de saída: 1
+
+$ ./vm addresses.txt LRU fifo
+Erro: os algoritmos devem ser fifo ou lru.
+Uso: ./vm <arquivo_enderecos> <fifo|lru> <fifo|lru>
+Exemplo: ./vm address.txt lru fifo
+-> código de saída: 1
+
+$ ./vm addresses.txt lru abc
+Erro: os algoritmos devem ser fifo ou lru.
+Uso: ./vm <arquivo_enderecos> <fifo|lru> <fifo|lru>
+Exemplo: ./vm address.txt lru fifo
+-> código de saída: 1
+
+### (2) Arquivo de endereços
+$ ./vm naoexiste.txt lru fifo
+Erro: não foi possível abrir 'naoexiste.txt'.
+-> código de saída: 1
+
+$ ./vm tests lru fifo
+Erro: não foi possível ler 'tests'.
+-> código de saída: 1
+
+$ ./vm tests/empty.txt lru fifo
+Erro: 'tests/empty.txt' não contém endereços.
+-> código de saída: 1
+
+$ ./vm tests/bad_text.txt lru fifo
+Erro: 'tests/bad_text.txt' linha 2: "abc" não é um endereço válido.
+-> código de saída: 1
+
+$ ./vm tests/bad_neg.txt lru fifo
+Erro: 'tests/bad_neg.txt' linha 2: "-5" não é um endereço válido.
+-> código de saída: 1
+
+$ ./vm tests/bad_range.txt lru fifo
+Erro: 'tests/bad_range.txt' linha 2: endereço 70000 fora do intervalo 0-65535.
+-> código de saída: 1
+
+$ ./vm tests/bad_two.txt lru fifo
+Erro: 'tests/bad_two.txt' linha 1: "1 2" não é um endereço válido.
+-> código de saída: 1
+
+===== Tabela de páginas com 256 frames (compilado com -DNUM_FRAMES=256) =====
+Virtual address: 16916 TLB: 0 Physical address: 20 Value: 0
+Virtual address: 62493 TLB: 1 Physical address: 285 Value: 0
+Virtual address: 30198 TLB: 2 Physical address: 758 Value: 29
+Number of Translated Addresses = 1000
+Page Faults = 244
+Page Fault Rate = 0.244
+TLB Hits = 54
+TLB Hit Rate = 0.054
+
+===== 128 frames: página fifo, TLB fifo =====
+$ ./vm addresses.txt fifo fifo
+Virtual address: 16916 TLB: 0 Physical address: 20 Value: 0
+Virtual address: 62493 TLB: 1 Physical address: 285 Value: 0
+Virtual address: 30198 TLB: 2 Physical address: 758 Value: 29
+Number of Translated Addresses = 1000
+Page Faults = 538
+Page Fault Rate = 0.538
+TLB Hits = 54
+TLB Hit Rate = 0.054
+
+===== 128 frames: página fifo, TLB lru =====
+$ ./vm addresses.txt fifo lru
+Virtual address: 16916 TLB: 0 Physical address: 20 Value: 0
+Virtual address: 62493 TLB: 1 Physical address: 285 Value: 0
+Virtual address: 30198 TLB: 2 Physical address: 758 Value: 29
+Number of Translated Addresses = 1000
+Page Faults = 538
+Page Fault Rate = 0.538
+TLB Hits = 55
+TLB Hit Rate = 0.055
+
+===== 128 frames: página lru, TLB fifo =====
+$ ./vm addresses.txt lru fifo
+Virtual address: 16916 TLB: 0 Physical address: 20 Value: 0
+Virtual address: 62493 TLB: 1 Physical address: 285 Value: 0
+Virtual address: 30198 TLB: 2 Physical address: 758 Value: 29
+Number of Translated Addresses = 1000
+Page Faults = 539
+Page Fault Rate = 0.539
+TLB Hits = 54
+TLB Hit Rate = 0.054
+
+===== 128 frames: página lru, TLB lru =====
+$ ./vm addresses.txt lru lru
+Virtual address: 16916 TLB: 0 Physical address: 20 Value: 0
+Virtual address: 62493 TLB: 1 Physical address: 285 Value: 0
+Virtual address: 30198 TLB: 2 Physical address: 758 Value: 29
+Number of Translated Addresses = 1000
+Page Faults = 539
+Page Fault Rate = 0.539
+TLB Hits = 55
+TLB Hit Rate = 0.055
+
+===== Comparação com o correct.txt do professor (lru fifo) =====
+correct.txt IDÊNTICO ao do professor
+
+===== Busca na TLB com threads (funções pthread usadas pelo vm) =====
+                 U pthread_create@GLIBC_2.34
+                 U pthread_join@GLIBC_2.34
